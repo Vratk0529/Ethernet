@@ -1,4 +1,4 @@
-:repository-owner: arduino-libraries
+:repository-owner: Vratk0529
 :repository-name: Ethernet
 
 = {repository-name} Library for Arduino =
@@ -11,6 +11,22 @@ With the Arduino Ethernet Shield, this library allows an Arduino board to connec
 
 For more information about this library please visit us at
 https://www.arduino.cc/en/Reference/{repository-name}
+
+== Changes in this fork ==
+
+Drop-in replacement for arduino-libraries/Ethernet 2.0.2, used by SmartLib.
+
+* *No more hangs when the peer disappears.* Upstream spins forever in
+  `socketSend()`, `socketSendUDP()` and `EthernetClient::flush()` if the cable
+  is pulled or the peer moves networks: the socket stays ESTABLISHED, the chip
+  never transmits, so it never times out either. Those waits now give up after
+  250 ms (a timed-out send returns 0, which callers already treat as failure),
+  and the two "read until stable" register loops give up after 16 reads.
+* `Ethernet.setHostname("KitchenLight")` before `begin()` sends a real DHCP
+  hostname (option 12) instead of `WIZnetXXXXXX`, so the router's lease list
+  says what the device is.
+* DHCP asks for NTP servers (option 42); `Ethernet.ntpServerIP()` returns the
+  first one, or 0.0.0.0 if the lease has none.
 
 == License ==
 

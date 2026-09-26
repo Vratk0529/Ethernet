@@ -266,13 +266,14 @@ static uint16_t getSnRX_RSR(uint8_t s)
         uint16_t val, prev;
 
         prev = W5100.readSnRX_RSR(s);
-        while (1) {
+        for (uint8_t tries = 0; tries < 16; tries++) {
                 val = W5100.readSnRX_RSR(s);
                 if (val == prev) {
 			return val;
 		}
                 prev = val;
         }
+        return prev;   // unstable reads: give up rather than spin
 #else
 	uint16_t val = W5100.readSnRX_RSR(s);
 	return val;
@@ -384,7 +385,7 @@ static uint16_t getSnTX_FSR(uint8_t s)
         uint16_t val, prev;
 
         prev = W5100.readSnTX_FSR(s);
-        while (1) {
+        for (uint8_t tries = 0; tries < 16; tries++) {
                 val = W5100.readSnTX_FSR(s);
                 if (val == prev) {
 			state[s].TX_FSR = val;
@@ -392,6 +393,8 @@ static uint16_t getSnTX_FSR(uint8_t s)
 		}
                 prev = val;
         }
+        state[s].TX_FSR = prev;
+        return prev;
 }
 
 
@@ -432,12 +435,17 @@ uint16_t EthernetClass::socketSend(uint8_t s, const uint8_t * buf, uint16_t len)
 	}
 
 	// if freebuf is available, start.
+	uint32_t deadline = millis() + 250;
 	do {
 		SPI.beginTransaction(SPI_ETHERNET_SETTINGS);
 		freesize = getSnTX_FSR(s);
 		status = W5100.readSnSR(s);
 		SPI.endTransaction();
 		if ((status != SnSR::ESTABLISHED) && (status != SnSR::CLOSE_WAIT)) {
+			ret = 0;
+			break;
+		}
+		if ((int32_t)(millis() - deadline) >= 0) {
 			ret = 0;
 			break;
 		}
@@ -450,9 +458,14 @@ uint16_t EthernetClass::socketSend(uint8_t s, const uint8_t * buf, uint16_t len)
 	W5100.execCmdSn(s, Sock_SEND);
 
 	/* +2008.01 bj */
+	deadline = millis() + 250;
 	while ( (W5100.readSnIR(s) & SnIR::SEND_OK) != SnIR::SEND_OK ) {
 		/* m2008.01 [bj] : reduce code */
 		if ( W5100.readSnSR(s) == SnSR::CLOSED ) {
+			SPI.endTransaction();
+			return 0;
+		}
+		if ((int32_t)(millis() - deadline) >= 0) {
 			SPI.endTransaction();
 			return 0;
 		}
@@ -515,7 +528,13 @@ bool EthernetClass::socketSendUDP(uint8_t s)
 	W5100.execCmdSn(s, Sock_SEND);
 
 	/* +2008.01 bj */
+	uint32_t deadline = millis() + 250;
 	while ( (W5100.readSnIR(s) & SnIR::SEND_OK) != SnIR::SEND_OK ) {
+		if ((int32_t)(millis() - deadline) >= 0) {
+			W5100.writeSnIR(s, (SnIR::SEND_OK|SnIR::TIMEOUT));
+			SPI.endTransaction();
+			return false;
+		}
 		if (W5100.readSnIR(s) & SnIR::TIMEOUT) {
 			/* +2008.01 [bj]: clear interrupt */
 			W5100.writeSnIR(s, (SnIR::SEND_OK|SnIR::TIMEOUT));

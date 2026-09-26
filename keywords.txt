@@ -43,6 +43,9 @@ MACAddress	KEYWORD2
 subnetMask	KEYWORD2
 gatewayIP	KEYWORD2
 dnsServerIP	KEYWORD2
+ntpServerIP	KEYWORD2
+setHostname	KEYWORD2
+hostname	KEYWORD2
 setMACAddress	KEYWORD2
 setLocalIP	KEYWORD2
 setSubnetMask	KEYWORD2

@@ -24,7 +24,15 @@
 #include "Dhcp.h"
 
 IPAddress EthernetClass::_dnsServerAddress;
+IPAddress EthernetClass::_ntpServerAddress;
 DhcpClass* EthernetClass::_dhcp = NULL;
+char EthernetClass::_hostname[33] = "";
+
+void EthernetClass::setHostname(const char *hostname)
+{
+	strncpy(_hostname, hostname ? hostname : "", sizeof(_hostname) - 1);
+	_hostname[sizeof(_hostname) - 1] = '\0';
+}
 
 int EthernetClass::begin(uint8_t *mac, unsigned long timeout, unsigned long responseTimeout)
 {
@@ -49,6 +57,7 @@ int EthernetClass::begin(uint8_t *mac, unsigned long timeout, unsigned long resp
 		W5100.setSubnetMask(_dhcp->getSubnetMask().raw_address());
 		SPI.endTransaction();
 		_dnsServerAddress = _dhcp->getDnsServerIp();
+		_ntpServerAddress = _dhcp->getNtpServerIp();
 		socketPortRand(micros());
 	}
 	return ret;
@@ -134,6 +143,7 @@ int EthernetClass::maintain()
 			W5100.setSubnetMask(_dhcp->getSubnetMask().raw_address());
 			SPI.endTransaction();
 			_dnsServerAddress = _dhcp->getDnsServerIp();
+			_ntpServerAddress = _dhcp->getNtpServerIp();
 			break;
 		default:
 			//this is actually an error, it will retry though

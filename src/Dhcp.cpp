@@ -27,6 +27,7 @@ void DhcpClass::reset_DHCP_lease()
 {
 	// zero out _dhcpSubnetMask, _dhcpGatewayIp, _dhcpLocalIp, _dhcpDhcpServerIp, _dhcpDnsServerIp
 	memset(_dhcpLocalIp, 0, 20);
+	memset(_dhcpNtpServerIp, 0, 4);
 }
 
 	//return:0 on error, 1 if request is sent and response is received
@@ -186,17 +187,27 @@ void DhcpClass::send_DHCP_MESSAGE(uint8_t messageType, uint16_t secondsElapsed)
 	buffer[9] = 0x01;
 	memcpy(buffer + 10, _dhcpMacAddr, 6);
 
-	// OPT - host name
-	buffer[16] = hostName;
-	buffer[17] = strlen(HOST_NAME) + 6; // length of hostname + last 3 bytes of mac address
-	strcpy((char*)&(buffer[18]), HOST_NAME);
-
-	printByte((char*)&(buffer[24]), _dhcpMacAddr[3]);
-	printByte((char*)&(buffer[26]), _dhcpMacAddr[4]);
-	printByte((char*)&(buffer[28]), _dhcpMacAddr[5]);
-
 	//put data in W5100 transmit buffer
-	_dhcpUdpSocket.write(buffer, 30);
+	_dhcpUdpSocket.write(buffer, 16);
+
+	// OPT - host name
+	const char *name = Ethernet.hostname();
+	if (name[0] != '\0') {
+		buffer[0] = hostName;
+		buffer[1] = strlen(name);
+		_dhcpUdpSocket.write(buffer, 2);
+		_dhcpUdpSocket.write((const uint8_t *)name, buffer[1]);
+	} else {
+		buffer[0] = hostName;
+		buffer[1] = strlen(HOST_NAME) + 6; // length of hostname + last 3 bytes of mac address
+		strcpy((char*)&(buffer[2]), HOST_NAME);
+
+		printByte((char*)&(buffer[8]), _dhcpMacAddr[3]);
+		printByte((char*)&(buffer[10]), _dhcpMacAddr[4]);
+		printByte((char*)&(buffer[12]), _dhcpMacAddr[5]);
+
+		_dhcpUdpSocket.write(buffer, 14);
+	}
 
 	if (messageType == DHCP_REQUEST) {
 		buffer[0] = dhcpRequestedIPaddr;
@@ -218,17 +229,18 @@ void DhcpClass::send_DHCP_MESSAGE(uint8_t messageType, uint16_t secondsElapsed)
 	}
 
 	buffer[0] = dhcpParamRequest;
-	buffer[1] = 0x06;
+	buffer[1] = 0x07;
 	buffer[2] = subnetMask;
 	buffer[3] = routersOnSubnet;
 	buffer[4] = dns;
 	buffer[5] = domainName;
 	buffer[6] = dhcpT1value;
 	buffer[7] = dhcpT2value;
-	buffer[8] = endOption;
+	buffer[8] = ntpServers;
+	buffer[9] = endOption;
 
 	//put data in W5100 transmit buffer
-	_dhcpUdpSocket.write(buffer, 9);
+	_dhcpUdpSocket.write(buffer, 10);
 
 	_dhcpUdpSocket.endPacket();
 }
@@ -261,6 +273,8 @@ uint8_t DhcpClass::parseDHCPResponse(unsigned long responseTimeout, uint32_t& tr
 		}
 
 		memcpy(_dhcpLocalIp, fixedMsg.yiaddr, 4);
+		// Only valid if this reply carries it; a renewal may drop it.
+		memset(_dhcpNtpServerIp, 0, 4);
 
 		// Skip to the option part
 		_dhcpUdpSocket.read((uint8_t *)NULL, 240 - (int)sizeof(RIP_MSG_FIXED));
@@ -293,6 +307,16 @@ uint8_t DhcpClass::parseDHCPResponse(unsigned long responseTimeout, uint32_t& tr
 				opt_len = _dhcpUdpSocket.read();
 				_dhcpUdpSocket.read(_dhcpDnsServerIp, 4);
 				_dhcpUdpSocket.read((uint8_t *)NULL, opt_len - 4);
+				break;
+
+			case ntpServers :
+				opt_len = _dhcpUdpSocket.read();
+				if (opt_len >= 4) {
+					_dhcpUdpSocket.read(_dhcpNtpServerIp, 4);
+					_dhcpUdpSocket.read((uint8_t *)NULL, opt_len - 4);
+				} else {
+					_dhcpUdpSocket.read((uint8_t *)NULL, opt_len);
+				}
 				break;
 
 			case dhcpServerIdentifier :
@@ -418,6 +442,11 @@ IPAddress DhcpClass::getDhcpServerIp()
 IPAddress DhcpClass::getDnsServerIp()
 {
 	return IPAddress(_dhcpDnsServerIp);
+}
+
+IPAddress DhcpClass::getNtpServerIp()
+{
+	return IPAddress(_dhcpNtpServerIp);
 }
 
 void DhcpClass::printByte(char * buf, uint8_t n )

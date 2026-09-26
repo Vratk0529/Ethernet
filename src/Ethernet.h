@@ -21,6 +21,10 @@
 #ifndef ethernet_h_
 #define ethernet_h_
 
+// This fork: bounded send/flush waits, Ethernet.setHostname() and
+// Ethernet.ntpServerIP(). See README.adoc.
+#define ETHERNET_FORK_VRATK0529 1
+
 // All symbols exposed to Arduino sketches are contained in this header file
 //
 // Older versions had much of this stuff in EthernetClient.h, EthernetServer.h,
@@ -74,7 +78,9 @@ class DhcpClass;
 class EthernetClass {
 private:
 	static IPAddress _dnsServerAddress;
+	static IPAddress _ntpServerAddress;
 	static DhcpClass* _dhcp;
+	static char _hostname[33];
 public:
 	// Initialise the Ethernet shield to use the provided MAC address and
 	// gain the rest of the configuration through DHCP.
@@ -96,6 +102,14 @@ public:
 	static IPAddress subnetMask();
 	static IPAddress gatewayIP();
 	static IPAddress dnsServerIP() { return _dnsServerAddress; }
+	// First NTP server offered by DHCP (option 42), or 0.0.0.0 if none.
+	static IPAddress ntpServerIP() { return _ntpServerAddress; }
+
+	// DHCP hostname (option 12), shown in the router's lease list. Call
+	// before begin(). Letters, digits and '-' only, at most 32 characters.
+	// Without it the name is "WIZnet" plus the last 3 bytes of the MAC.
+	static void setHostname(const char *hostname);
+	static const char *hostname() { return _hostname; }
 
 	void setMACAddress(const uint8_t *mac_address);
 	void setLocalIP(const IPAddress local_ip);
@@ -281,12 +295,14 @@ private:
 	uint8_t  _dhcpGatewayIp[4] __attribute__((aligned(4)));
 	uint8_t  _dhcpDhcpServerIp[4] __attribute__((aligned(4)));
 	uint8_t  _dhcpDnsServerIp[4] __attribute__((aligned(4)));
+	uint8_t  _dhcpNtpServerIp[4] __attribute__((aligned(4)));
 #else
 	uint8_t  _dhcpLocalIp[4];
 	uint8_t  _dhcpSubnetMask[4];
 	uint8_t  _dhcpGatewayIp[4];
 	uint8_t  _dhcpDhcpServerIp[4];
 	uint8_t  _dhcpDnsServerIp[4];
+	uint8_t  _dhcpNtpServerIp[4];
 #endif
 	uint32_t _dhcpLeaseTime;
 	uint32_t _dhcpT1, _dhcpT2;
@@ -311,6 +327,7 @@ public:
 	IPAddress getGatewayIp();
 	IPAddress getDhcpServerIp();
 	IPAddress getDnsServerIp();
+	IPAddress getNtpServerIp();
 
 	int beginWithDHCP(uint8_t *, unsigned long timeout = 60000, unsigned long responseTimeout = 4000);
 	int checkLease();
